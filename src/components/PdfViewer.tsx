@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, Maximize2, Minus, Plus, RotateCcw } from "lucide-react";
+import { ChevronLeft, ChevronRight, Maximize2, Minus, Plus, RotateCcw, RotateCw, Maximize } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import type { PDFDocumentProxy } from "@/lib/pdfjs";
 import type { PoleLocation } from "@/types/pole";
+import { loadRotations, saveRotations, type RotationMap } from "@/lib/rotationStorage";
 
 interface PdfViewerProps {
   pdf: PDFDocumentProxy;
   highlight: PoleLocation | null;
+  fileName: string | null;
 }
 
 interface PanState {
@@ -17,7 +19,7 @@ interface PanState {
 const MIN_SCALE = 0.3;
 const MAX_SCALE = 6;
 
-export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
+export function PdfViewer({ pdf, highlight, fileName }: PdfViewerProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const renderTaskRef = useRef<any>(null);
@@ -29,14 +31,23 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
   const [isDragging, setIsDragging] = useState(false);
   const dragStart = useRef<{ x: number; y: number; px: number; py: number } | null>(null);
 
-  // Render current page
+  // Per-page rotations, restored from localStorage for this file.
+  const [rotations, setRotations] = useState<RotationMap>({});
+  useEffect(() => {
+    setRotations(loadRotations(fileName));
+  }, [fileName]);
+
+  const rotation = ((rotations[page] ?? 0) % 360 + 360) % 360;
+
+  // Render current page (applying user rotation on top of the page's own rotation)
   useEffect(() => {
     let cancelled = false;
     (async () => {
       const canvas = canvasRef.current;
       if (!canvas) return;
       const pageObj = await pdf.getPage(page);
-      const viewport = pageObj.getViewport({ scale });
+      const baseRotation = pageObj.rotate ?? 0;
+      const viewport = pageObj.getViewport({ scale, rotation: (baseRotation + rotation) % 360 });
       if (cancelled) return;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
@@ -56,26 +67,37 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
       try { await task.promise; } catch {}
     })();
     return () => { cancelled = true; };
-  }, [pdf, page, scale]);
+  }, [pdf, page, scale, rotation]);
 
   // Fit-to-screen helper
   const fitToScreen = useCallback(async () => {
     const container = containerRef.current;
     if (!container) return;
     const pageObj = await pdf.getPage(page);
-    const v1 = pageObj.getViewport({ scale: 1 });
+    const baseRotation = pageObj.rotate ?? 0;
+    const v1 = pageObj.getViewport({ scale: 1, rotation: (baseRotation + rotation) % 360 });
     const cw = container.clientWidth - 32;
     const ch = container.clientHeight - 32;
     const s = Math.min(cw / v1.width, ch / v1.height);
     setScale(Math.max(MIN_SCALE, Math.min(MAX_SCALE, s)));
     setPan({ x: 0, y: 0 });
-  }, [pdf, page]);
+  }, [pdf, page, rotation]);
 
   // Initial fit
   useEffect(() => {
     fitToScreen();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pdf]);
+
+  // Compute viewport point for a highlight, honoring rotation.
+  const computeHighlightPoint = useCallback(async (h: PoleLocation, atScale: number) => {
+    const pageObj = await pdf.getPage(h.page);
+    const baseRotation = pageObj.rotate ?? 0;
+    const rot = ((rotations[h.page] ?? 0) + baseRotation) % 360;
+    const vp = pageObj.getViewport({ scale: atScale, rotation: rot });
+    const [vx, vy] = vp.convertToViewportPoint(h.x, h.y);
+    return { x: vx, y: vy, width: vp.width, height: vp.height };
+  }, [pdf, rotations]);
 
   // Handle highlight changes: jump to page, zoom, center
   useEffect(() => {
@@ -86,47 +108,33 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
       if (!container) return;
       const targetScale = 2.5;
       setScale(targetScale);
-      // wait next paint then center
+      const pt = await computeHighlightPoint(highlight, targetScale);
       requestAnimationFrame(() => {
         requestAnimationFrame(() => {
           const cw = container.clientWidth;
           const ch = container.clientHeight;
-          // highlight x,y in PDF (origin bottom-left). Convert to canvas px.
-          const pxX = highlight.x * targetScale;
-          const pxY = (highlight.pageHeight - highlight.y) * targetScale;
-          setPan({
-            x: cw / 2 - pxX,
-            y: ch / 2 - pxY,
-          });
+          setPan({ x: cw / 2 - pt.x, y: ch / 2 - pt.y });
         });
       });
     })();
-  }, [highlight]);
+  }, [highlight, computeHighlightPoint]);
 
-  // Wheel zoom
-  const onWheel = useCallback((e: React.WheelEvent) => {
-    if (!e.ctrlKey && !e.metaKey && !e.shiftKey) {
-      // allow normal scroll-as-zoom for this app since pan is via drag
+  // Highlight marker position in canvas px (synchronous fallback assuming current viewport)
+  const [highlightPx, setHighlightPx] = useState<{ x: number; y: number } | null>(null);
+  useEffect(() => {
+    if (!highlight || highlight.page !== page) {
+      setHighlightPx(null);
+      return;
     }
-    e.preventDefault();
-    const container = containerRef.current;
-    if (!container) return;
-    const rect = container.getBoundingClientRect();
-    const mx = e.clientX - rect.left;
-    const my = e.clientY - rect.top;
-    const delta = -e.deltaY * 0.0015;
-    setScale((prev) => {
-      const next = Math.max(MIN_SCALE, Math.min(MAX_SCALE, prev * (1 + delta)));
-      const ratio = next / prev;
-      setPan((p) => ({
-        x: mx - (mx - p.x) * ratio,
-        y: my - (my - p.y) * ratio,
-      }));
-      return next;
-    });
-  }, []);
+    let cancelled = false;
+    (async () => {
+      const pt = await computeHighlightPoint(highlight, scale);
+      if (!cancelled) setHighlightPx({ x: pt.x, y: pt.y });
+    })();
+    return () => { cancelled = true; };
+  }, [highlight, page, scale, rotation, computeHighlightPoint]);
 
-  // Attach wheel via native listener (passive: false to allow preventDefault)
+  // Wheel zoom (native listener for passive:false)
   useEffect(() => {
     const el = containerRef.current;
     if (!el) return;
@@ -169,6 +177,17 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
   const goPrev = () => setPage((p) => Math.max(1, p - 1));
   const goNext = () => setPage((p) => Math.min(pdf.numPages, p + 1));
 
+  const rotateBy = (delta: number) => {
+    setRotations((prev) => {
+      const current = prev[page] ?? 0;
+      const next = (((current + delta) % 360) + 360) % 360;
+      const updated: RotationMap = { ...prev, [page]: next };
+      saveRotations(fileName, updated);
+      return updated;
+    });
+    setPan({ x: 0, y: 0 });
+  };
+
   const toggleFullscreen = () => {
     const el = containerRef.current?.parentElement;
     if (!el) return;
@@ -179,15 +198,12 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
     }
   };
 
-  // Highlight marker position in canvas px
-  const showHighlight = highlight && highlight.page === page;
-  const hx = showHighlight ? highlight!.x * scale : 0;
-  const hy = showHighlight ? (highlight!.pageHeight - highlight!.y) * scale : 0;
+  const showHighlight = highlight && highlight.page === page && highlightPx;
 
   return (
     <div className="relative flex h-full w-full flex-col bg-background">
       {/* Toolbar */}
-      <div className="surface flex items-center justify-between gap-2 border-b border-border px-3 py-2">
+      <div className="surface flex flex-wrap items-center justify-between gap-2 border-b border-border px-3 py-2">
         <div className="flex items-center gap-1">
           <Button size="icon" variant="ghost" onClick={goPrev} disabled={page <= 1}>
             <ChevronLeft className="h-4 w-4" />
@@ -200,6 +216,19 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
           </Button>
         </div>
         <div className="flex items-center gap-1">
+          <Button size="icon" variant="ghost" onClick={() => rotateBy(-90)} title="Girar 90° à esquerda">
+            <RotateCcw className="h-4 w-4" />
+          </Button>
+          <span
+            className="min-w-[48px] text-center text-xs tabular-nums text-muted-foreground"
+            title="Rotação aplicada nesta página (salva)"
+          >
+            {rotation}°
+          </span>
+          <Button size="icon" variant="ghost" onClick={() => rotateBy(90)} title="Girar 90° à direita">
+            <RotateCw className="h-4 w-4" />
+          </Button>
+          <div className="mx-1 h-5 w-px bg-border" />
           <Button size="icon" variant="ghost" onClick={zoomOut}>
             <Minus className="h-4 w-4" />
           </Button>
@@ -210,7 +239,7 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
             <Plus className="h-4 w-4" />
           </Button>
           <Button size="icon" variant="ghost" onClick={fitToScreen} title="Ajustar à tela">
-            <RotateCcw className="h-4 w-4" />
+            <Maximize className="h-4 w-4" />
           </Button>
           <Button size="icon" variant="ghost" onClick={toggleFullscreen} title="Tela cheia">
             <Maximize2 className="h-4 w-4" />
@@ -241,7 +270,7 @@ export function PdfViewer({ pdf, highlight }: PdfViewerProps) {
           {showHighlight && (
             <div
               className="pointer-events-none absolute fade-in"
-              style={{ left: hx, top: hy, transform: "translate(-50%, -50%)" }}
+              style={{ left: highlightPx!.x, top: highlightPx!.y, transform: "translate(-50%, -50%)" }}
             >
               <div className="pulse-ring h-14 w-14 rounded-full border-2 border-destructive bg-destructive/10" />
               <div className="absolute left-1/2 top-full mt-2 -translate-x-1/2 whitespace-nowrap rounded-md bg-destructive px-2 py-1 text-xs font-bold text-destructive-foreground shadow-lg">
