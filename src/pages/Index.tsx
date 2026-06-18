@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MapPin } from "lucide-react";
+import { MapPin, Trash2 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { UploadArea } from "@/components/UploadArea";
 import { SearchBar } from "@/components/SearchBar";
