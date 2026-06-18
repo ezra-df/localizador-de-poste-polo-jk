@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pdfjsLib } from "@/lib/pdfjs";
 import type { PDFDocumentProxy } from "@/lib/pdfjs";
 import type { PdfIndex, PoleLocation, PoleStats } from "@/types/pole";
+import { clearStoredPdf, loadStoredPdf, savePdf } from "@/lib/pdfStorage";
 
 interface IndexProgress {
   current: number;
@@ -17,7 +18,10 @@ interface UsePdfIndexReturn {
   error: string | null;
   fileName: string | null;
   stats: PoleStats;
+  hasStored: boolean;
+  restoring: boolean;
   loadPdf: (file: File) => Promise<void>;
+  clearSaved: () => Promise<void>;
   reset: () => void;
 }
 
