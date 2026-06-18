@@ -1,7 +1,8 @@
-import { useCallback, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { pdfjsLib } from "@/lib/pdfjs";
 import type { PDFDocumentProxy } from "@/lib/pdfjs";
 import type { PdfIndex, PoleLocation, PoleStats } from "@/types/pole";
+import { clearStoredPdf, loadStoredPdf, savePdf } from "@/lib/pdfStorage";
 
 interface IndexProgress {
   current: number;
@@ -17,7 +18,10 @@ interface UsePdfIndexReturn {
   error: string | null;
   fileName: string | null;
   stats: PoleStats;
+  hasStored: boolean;
+  restoring: boolean;
   loadPdf: (file: File) => Promise<void>;
+  clearSaved: () => Promise<void>;
   reset: () => void;
 }
 
@@ -51,6 +55,9 @@ export function usePdfIndex(): UsePdfIndexReturn {
   const [progress, setProgress] = useState<IndexProgress>({ current: 0, total: 0 });
   const [error, setError] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
+  const [hasStored, setHasStored] = useState(false);
+  const [restoring, setRestoring] = useState(true);
+  const didInit = useRef(false);
 
   const reset = useCallback(() => {
     setPdf(null);
@@ -60,13 +67,12 @@ export function usePdfIndex(): UsePdfIndexReturn {
     setProgress({ current: 0, total: 0 });
   }, []);
 
-  const loadPdf = useCallback(async (file: File) => {
+  const processBuffer = useCallback(async (buffer: ArrayBuffer, name: string) => {
     setLoading(true);
     setError(null);
     setIndex({});
-    setFileName(file.name);
+    setFileName(name);
     try {
-      const buffer = await file.arrayBuffer();
       const doc = await pdfjsLib.getDocument({ data: buffer }).promise;
       setPdf(doc);
       setLoading(false);
@@ -82,9 +88,7 @@ export function usePdfIndex(): UsePdfIndexReturn {
           const str: string = (item.str ?? "").trim();
           if (!str) continue;
           if (!POLE_REGEX.test(str)) continue;
-          // skip if already exists (first occurrence wins)
           if (localIndex[str]) continue;
-          // transform: [a, b, c, d, e, f] - e and f are translate (PDF coords, origin bottom-left)
           const tx = item.transform[4] as number;
           const ty = item.transform[5] as number;
           const w = (item.width as number) ?? 0;
@@ -113,9 +117,49 @@ export function usePdfIndex(): UsePdfIndexReturn {
     }
   }, []);
 
+  const loadPdf = useCallback(async (file: File) => {
+    const buffer = await file.arrayBuffer();
+    // Persist a copy first (pdf.js may detach the buffer we pass to it).
+    try {
+      await savePdf(file.name, buffer);
+      setHasStored(true);
+    } catch (e) {
+      console.warn("Falha ao salvar PDF localmente", e);
+    }
+    await processBuffer(buffer.slice(0), file.name);
+  }, [processBuffer]);
+
+  const clearSaved = useCallback(async () => {
+    try {
+      await clearStoredPdf();
+    } finally {
+      setHasStored(false);
+      reset();
+    }
+  }, [reset]);
+
+  // Auto-restore stored PDF on mount.
+  useEffect(() => {
+    if (didInit.current) return;
+    didInit.current = true;
+    (async () => {
+      try {
+        const stored = await loadStoredPdf();
+        if (stored) {
+          setHasStored(true);
+          await processBuffer(stored.data.slice(0), stored.name);
+        }
+      } catch (e) {
+        console.warn("Falha ao restaurar PDF salvo", e);
+      } finally {
+        setRestoring(false);
+      }
+    })();
+  }, [processBuffer]);
+
   const stats = useMemo(() => computeStats(index), [index]);
 
-  return { pdf, index, loading, indexing, progress, error, fileName, stats, loadPdf, reset };
+  return { pdf, index, loading, indexing, progress, error, fileName, stats, hasStored, restoring, loadPdf, clearSaved, reset };
 }
 
 export function findPole(index: PdfIndex, query: string): PoleLocation | null {

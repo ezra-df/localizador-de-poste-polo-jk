@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { toast } from "sonner";
-import { MapPin } from "lucide-react";
+import { MapPin, Trash2 } from "lucide-react";
 import { Header } from "@/components/Header";
 import { UploadArea } from "@/components/UploadArea";
 import { SearchBar } from "@/components/SearchBar";
@@ -11,7 +11,7 @@ import { findPole, usePdfIndex } from "@/hooks/usePdfIndex";
 import type { PoleLocation } from "@/types/pole";
 
 const Index = () => {
-  const { pdf, index, loading, indexing, progress, error, fileName, stats, loadPdf } = usePdfIndex();
+  const { pdf, index, loading, indexing, progress, error, fileName, stats, hasStored, loadPdf, clearSaved } = usePdfIndex();
   const [highlight, setHighlight] = useState<PoleLocation | null>(null);
 
   useEffect(() => {
@@ -62,6 +62,19 @@ const Index = () => {
             indexing={indexing}
             progress={progress}
           />
+        )}
+        {pdf && hasStored && (
+          <button
+            onClick={async () => {
+              await clearSaved();
+              toast.success("PDF salvo removido");
+            }}
+            className="surface flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-[var(--transition-smooth)] hover:border-destructive/60 hover:text-destructive"
+            title="Remover PDF salvo do navegador"
+          >
+            <Trash2 className="h-4 w-4" />
+            Remover salvo
+          </button>
         )}
         {highlight && (
           <div className="fade-in surface flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs">
