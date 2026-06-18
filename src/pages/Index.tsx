@@ -11,7 +11,7 @@ import { findPole, usePdfIndex } from "@/hooks/usePdfIndex";
 import type { PoleLocation } from "@/types/pole";
 
 const Index = () => {
-  const { pdf, index, loading, indexing, progress, error, fileName, stats, loadPdf } = usePdfIndex();
+  const { pdf, index, loading, indexing, progress, error, fileName, stats, hasStored, loadPdf, clearSaved } = usePdfIndex();
   const [highlight, setHighlight] = useState<PoleLocation | null>(null);
 
   useEffect(() => {
