@@ -63,6 +63,19 @@ const Index = () => {
             progress={progress}
           />
         )}
+        {pdf && hasStored && (
+          <button
+            onClick={async () => {
+              await clearSaved();
+              toast.success("PDF salvo removido");
+            }}
+            className="surface flex items-center gap-2 rounded-lg border border-border px-3 py-2 text-sm font-medium transition-[var(--transition-smooth)] hover:border-destructive/60 hover:text-destructive"
+            title="Remover PDF salvo do navegador"
+          >
+            <Trash2 className="h-4 w-4" />
+            Remover salvo
+          </button>
+        )}
         {highlight && (
           <div className="fade-in surface flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-1.5 text-xs">
             <MapPin className="h-3.5 w-3.5 text-primary" />
