@@ -100,7 +100,7 @@ const Index = () => {
 
         <main className="min-w-0 flex-1">
           {pdf ? (
-            <PdfViewer pdf={pdf} highlight={highlight} />
+            <PdfViewer pdf={pdf} highlight={highlight} fileName={fileName} />
           ) : (
             <UploadArea
               onFile={loadPdf}
