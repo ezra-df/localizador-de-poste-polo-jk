@@ -1,4 +1,5 @@
 import { Zap } from "lucide-react";
+import { NavLink } from "react-router-dom";
 
 interface HeaderProps {
   fileName?: string | null;
@@ -16,8 +17,31 @@ export function Header({ fileName }: HeaderProps) {
           <p className="text-xs text-muted-foreground">Engenharia &amp; Fiscalização</p>
         </div>
       </div>
+      <nav className="flex items-center gap-1">
+        <NavLink
+          to="/"
+          end
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              isActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+            }`
+          }
+        >
+          Localizador
+        </NavLink>
+        <NavLink
+          to="/numerar"
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              isActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+            }`
+          }
+        >
+          Numerar PDF
+        </NavLink>
+      </nav>
       {fileName && (
-        <div className="hidden truncate text-xs text-muted-foreground md:block">
+        <div className="hidden max-w-[240px] truncate text-xs text-muted-foreground md:block">
           <span className="font-medium text-foreground">Arquivo:</span> {fileName}
         </div>
       )}
