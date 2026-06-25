@@ -39,6 +39,16 @@ export function Header({ fileName }: HeaderProps) {
         >
           Numerar PDF
         </NavLink>
+        <NavLink
+          to="/prints"
+          className={({ isActive }) =>
+            `rounded-md px-3 py-1.5 text-xs font-medium transition-colors ${
+              isActive ? "bg-primary/15 text-primary" : "text-muted-foreground hover:text-foreground"
+            }`
+          }
+        >
+          Gerar Prints
+        </NavLink>
       </nav>
       {fileName && (
         <div className="hidden max-w-[240px] truncate text-xs text-muted-foreground md:block">
