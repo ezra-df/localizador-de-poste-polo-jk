@@ -32,20 +32,31 @@ export async function exportAnnotatedPdf(
   for (const [pageNum, anns] of byPage) {
     const page = pages[pageNum - 1];
     if (!page) continue;
-    const rotation = page.getRotation().angle % 360;
+    // PDF /Rotate is applied clockwise by the viewer; pdf-lib's `degrees()` is
+    // counter-clockwise. To keep the glyph upright in the viewer we rotate the
+    // text by +rotation (CCW), which cancels the viewer's CW rotation.
+    const rotation = ((page.getRotation().angle % 360) + 360) % 360;
+    const theta = (rotation * Math.PI) / 180;
+    const cos = Math.cos(theta);
+    const sin = Math.sin(theta);
+
     for (const a of anns) {
       const size = a.fontSize;
       const textWidth = font.widthOfTextAtSize(a.text, size);
-      // Center the text horizontally on the click; vertically use ~1/3 size as baseline offset.
-      const x = a.x - textWidth / 2;
-      const y = a.y - size / 3;
+      // drawText anchors at the left of the baseline; after rotating by theta
+      // (CCW), the text's local "right" axis is (cos, sin) and "up" is (-sin, cos).
+      // Place the anchor so the visual center of the glyph row lands on (a.x, a.y).
+      const halfW = textWidth / 2;
+      const baselineOffset = size / 3;
+      const x = a.x - halfW * cos - baselineOffset * -sin;
+      const y = a.y - halfW * sin - baselineOffset * cos;
       page.drawText(a.text, {
         x,
         y,
         size,
         font,
         color: COLOR_MAP[a.color],
-        rotate: rotation ? degrees(-rotation) : undefined,
+        rotate: rotation ? degrees(rotation) : undefined,
       });
     }
   }
