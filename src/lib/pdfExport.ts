@@ -1,5 +1,10 @@
 import { PDFDocument, StandardFonts, rgb, degrees } from "pdf-lib";
 import type { AnnotationColor, NumberAnnotation } from "@/types/annotation";
+import {
+  ANN_ATTACH_NAME,
+  PERSISTENCE_MARKER,
+  SOURCE_ATTACH_NAME,
+} from "@/lib/pdfPersistence";
 
 const COLOR_MAP: Record<AnnotationColor, ReturnType<typeof rgb>> = {
   black: rgb(0, 0, 0),
