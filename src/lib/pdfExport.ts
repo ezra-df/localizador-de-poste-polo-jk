@@ -66,6 +66,31 @@ export async function exportAnnotatedPdf(
     }
   }
 
+  // -- Persistência embutida -------------------------------------------------
+  // Anexa o PDF original (limpo) + JSON das anotações, e marca o /Info/Keywords
+  // com um identificador reconhecível pelo app. Ao reabrir, esses anexos são
+  // extraídos e a edição continua exatamente de onde parou.
+  await pdfDoc.attach(sourceBuffer.slice(0), SOURCE_ATTACH_NAME, {
+    mimeType: "application/pdf",
+    description: "PDF original (Localizador de Postes)",
+    creationDate: new Date(),
+    modificationDate: new Date(),
+  });
+  const annJson = JSON.stringify(annotations);
+  await pdfDoc.attach(new TextEncoder().encode(annJson), ANN_ATTACH_NAME, {
+    mimeType: "application/json",
+    description: "Anotações de postes (Localizador de Postes)",
+    creationDate: new Date(),
+    modificationDate: new Date(),
+  });
+  // Preserva keywords existentes e acrescenta o marcador.
+  const existingKw = pdfDoc.getKeywords() ?? "";
+  pdfDoc.setKeywords(
+    existingKw.includes(PERSISTENCE_MARKER)
+      ? [existingKw]
+      : [existingKw ? `${existingKw} ${PERSISTENCE_MARKER}` : PERSISTENCE_MARKER]
+  );
+
   const bytes = await pdfDoc.save();
   // Wrap in a fresh Uint8Array so the Blob owns a standalone ArrayBuffer.
   const blob = new Blob([new Uint8Array(bytes)], { type: "application/pdf" });
