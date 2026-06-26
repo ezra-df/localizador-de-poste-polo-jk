@@ -5,8 +5,9 @@ import { Header } from "@/components/Header";
 import { UploadArea } from "@/components/UploadArea";
 import { PdfAnnotator } from "@/components/PdfAnnotator";
 import {
-  clearAnnotatorPdf, loadAnnotatorPdf, saveAnnotatorPdf,
+  clearAnnotatorPdf, loadAnnotatorPdf, saveAnnotations, saveAnnotatorPdf,
 } from "@/lib/annotatorStorage";
+import { tryReadPersistedData } from "@/lib/pdfPersistence";
 
 const Numerar = () => {
   const [buffer, setBuffer] = useState<ArrayBuffer | null>(null);
