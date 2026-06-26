@@ -5,8 +5,9 @@ import { Header } from "@/components/Header";
 import { UploadArea } from "@/components/UploadArea";
 import { PdfAnnotator } from "@/components/PdfAnnotator";
 import {
-  clearAnnotatorPdf, loadAnnotatorPdf, saveAnnotatorPdf,
+  clearAnnotatorPdf, loadAnnotatorPdf, saveAnnotations, saveAnnotatorPdf,
 } from "@/lib/annotatorStorage";
+import { tryReadPersistedData } from "@/lib/pdfPersistence";
 
 const Numerar = () => {
   const [buffer, setBuffer] = useState<ArrayBuffer | null>(null);
@@ -35,8 +36,24 @@ const Numerar = () => {
     setLoading(true);
     try {
       const buf = await file.arrayBuffer();
-      try { await saveAnnotatorPdf(file.name, buf); } catch (e) { console.warn(e); }
-      setBuffer(buf.slice(0));
+
+      // Se o PDF foi exportado anteriormente pelo app, contém o PDF original
+      // anexado + as anotações em JSON. Nesse caso usamos o original como base
+      // de trabalho (evita duplicação dos números ao reexportar).
+      const persisted = await tryReadPersistedData(buf);
+      const workingBuffer = persisted ? persisted.sourceBuffer : buf;
+
+      if (persisted) {
+        // Grava as anotações restauradas ANTES de montar o PdfAnnotator,
+        // para que ele as carregue do localStorage por fileName.
+        saveAnnotations(file.name, persisted.annotations);
+        toast.success(
+          `Edição restaurada: ${persisted.annotations.length} número(s) recuperados do PDF.`
+        );
+      }
+
+      try { await saveAnnotatorPdf(file.name, workingBuffer); } catch (e) { console.warn(e); }
+      setBuffer(workingBuffer.slice(0));
       setFileName(file.name);
     } catch (e: any) {
       toast.error(e?.message ?? "Falha ao carregar PDF");
